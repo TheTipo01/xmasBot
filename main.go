@@ -132,7 +132,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				if err != nil {
 					_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
 				} else {
-					_, _ = s.ChannelMessageSend(m.ChannelID, "Song added succesfully!\nRemember to restart the bot to add the song to the queue")
+					_, _ = s.ChannelMessageSend(m.ChannelID, "Song added successfully!\nRemember to restart the bot to add the song to the queue")
 				}
 				break
 			case "restart":

@@ -156,7 +156,7 @@ func xmasLoop(s *discordgo.Session, guild, channel string, fileInfo []os.FileInf
 
 	for {
 		for _, v := range rand.Perm(len(fileInfo)) {
-			playSound(vc, fileInfo[v].Name())
+			playSound(vc, fileInfo[v].Name(), s)
 		}
 
 	}

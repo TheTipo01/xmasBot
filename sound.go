@@ -6,9 +6,10 @@ import (
 	"github.com/bwmarrin/lit"
 	"io"
 	"os"
+	"time"
 )
 
-func playSound(vc *discordgo.VoiceConnection, fileName string) {
+func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Session) {
 	var opuslen int16
 
 	file, err := os.Open("./audio_cache/" + fileName)
@@ -16,6 +17,13 @@ func playSound(vc *discordgo.VoiceConnection, fileName string) {
 		lit.Error("Error opening dca file: %s", err)
 		return
 	}
+
+	// Channel to send ok messages
+	c1 := make(chan string, 1)
+
+	// Save channel and guild where we are playing songs, so we can reconnect to them if we need to
+	guild := vc.GuildID
+	channel := vc.ChannelID
 
 	for {
 		// Read opus frame length from dca file.
@@ -41,8 +49,19 @@ func playSound(vc *discordgo.VoiceConnection, fileName string) {
 			break
 		}
 
-		// Stream data to discord
-		vc.OpusSend <- InBuf
+		// Send data in a goroutine
+		go func() {
+			vc.OpusSend <- InBuf
+			c1 <- "ok"
+		}()
+
+		// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
+		select {
+		case _ = <-c1:
+			break
+		case <-time.After(time.Second / 3):
+			vc, _ = s.ChannelVoiceJoin(guild, channel, false, true)
+		}
 
 	}
 

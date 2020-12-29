@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Session) {
+func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Session, guild, channel string) {
 	var opuslen int16
 
 	file, err := os.Open("./audio_cache/" + fileName)
@@ -20,10 +20,6 @@ func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Sess
 
 	// Channel to send ok messages
 	c1 := make(chan string, 1)
-
-	// Save channel and guild where we are playing songs, so we can reconnect to them if we need to
-	guild := vc.GuildID
-	channel := vc.ChannelID
 
 	for {
 		// Read opus frame length from dca file.

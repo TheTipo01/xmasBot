@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Session, guild, channel string) {
+func playSound(fileName string, s *discordgo.Session) {
 	var opuslen int16
 
 	file, err := os.Open("./audio_cache/" + fileName)
@@ -45,20 +45,21 @@ func playSound(vc *discordgo.VoiceConnection, fileName string, s *discordgo.Sess
 			break
 		}
 
-		// Send data in a goroutine
-		go func() {
-			vc.OpusSend <- InBuf
-			c1 <- "ok"
-		}()
+		for i := range servers {
+			// Send data in a goroutine
+			go func() {
+				servers[i].vc.OpusSend <- InBuf
+				c1 <- "ok"
+			}()
 
-		// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
-		select {
-		case _ = <-c1:
-			break
-		case <-time.After(time.Second / 3):
-			vc, _ = s.ChannelVoiceJoin(guild, channel, false, true)
+			// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
+			select {
+			case _ = <-c1:
+				break
+			case <-time.After(time.Second / 3):
+				servers[i].vc, _ = s.ChannelVoiceJoin(servers[i].guild, servers[i].channel, false, true)
+			}
 		}
-
 	}
 
 	// Close the file

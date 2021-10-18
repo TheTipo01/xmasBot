@@ -17,9 +17,9 @@ import (
 
 // Variables used for command line parameters
 var (
-	token string
-	s     []server
-	admin []string
+	token   string
+	servers []server
+	admin   []string
 )
 
 func init() {
@@ -56,7 +56,7 @@ func init() {
 		}
 
 		for i := range guilds {
-			s = append(s, server{
+			servers = append(servers, server{
 				guild:   guilds[i],
 				channel: channels[i],
 			})
@@ -93,9 +93,7 @@ func main() {
 		return
 	}
 
-	for _, s := range s {
-		go xmasLoop(dg, s.guild, s.channel, fileInfo)
-	}
+	xmasLoop(dg, fileInfo)
 
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("xmasBot is now running.  Press CTRL-C to exit.")
@@ -110,7 +108,7 @@ func main() {
 func ready(s *discordgo.Session, _ *discordgo.Ready) {
 
 	// Set the playing status.
-	err := s.UpdateStatus(0, "xmas songs")
+	err := s.UpdateGameStatus(0, "xmas songs")
 	if err != nil {
 		lit.Error("Can't set status, %s", err)
 	}
@@ -144,20 +142,21 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 }
 
-func xmasLoop(s *discordgo.Session, guild, channel string, fileInfo []os.FileInfo) {
+func xmasLoop(s *discordgo.Session, fileInfo []os.FileInfo) {
 
-	vc, err := s.ChannelVoiceJoin(guild, channel, false, true)
-	if err != nil {
-		lit.Error("%s", err)
-		return
+	for i := range servers {
+		var err error
+		servers[i].vc, err = s.ChannelVoiceJoin(servers[i].guild, servers[i].channel, false, true)
+		if err != nil {
+			lit.Error("Can't join, %s", err.Error())
+		}
+
+		_ = servers[i].vc.Speaking(true)
 	}
-
-	_ = vc.Speaking(true)
 
 	for {
 		for _, v := range rand.Perm(len(fileInfo)) {
-			playSound(vc, fileInfo[v].Name(), s, guild, channel)
+			playSound(fileInfo[v].Name(), s)
 		}
-
 	}
 }

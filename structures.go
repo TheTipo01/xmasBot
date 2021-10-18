@@ -1,8 +1,11 @@
 package main
 
+import "github.com/bwmarrin/discordgo"
+
 type server struct {
 	guild   string
 	channel string
+	vc      *discordgo.VoiceConnection
 }
 
 // YoutubeDL structure for holding youtube-dl data

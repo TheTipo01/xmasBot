@@ -3,70 +3,74 @@ package main
 import (
 	"fmt"
 	"github.com/bwmarrin/lit"
-	"github.com/spf13/viper"
+	"github.com/kkyr/fig"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
+type Config struct {
+	Token   string `fig:"token" validate:"required"`
+	Guild   string `fig:"guild" validate:"required"`
+	Channel string `fig:"channel" validate:"required"`
+	Admin   string `fig:"admin" validate:"required"`
+}
+
 // Variables used for command line parameters
 var (
 	token   string
 	servers []server
 	admin   []string
+	mutex   = &sync.Mutex{}
+)
+
+const (
+	cachePath      = "./audio_cache/"
+	audioExtension = ".dca"
 )
 
 func init() {
-
 	lit.LogLevel = lit.LogInformational
 
 	rand.Seed(time.Now().UnixNano())
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("yml")
-	viper.AddConfigPath(".")
+	var cfg Config
+	err := fig.Load(&cfg, fig.File("config.yml"))
+	if err != nil {
+		lit.Error(err.Error())
+		return
+	}
 
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found
-			lit.Error("Config file not found! See example_config.yml")
-			return
-		}
-	} else {
-		// Config file found
+	token = cfg.Token
 
-		token = viper.GetString("token")
+	// People that can add songs and restart the bot
+	admin = strings.Split(cfg.Admin, ",")
 
-		// People that can add songs and restart the bot
-		admin = strings.Split(viper.GetString("admin"), ",")
+	// Initializing channels to enter
+	guilds := strings.Split(cfg.Guild, ",")
+	channels := strings.Split(cfg.Channel, ",")
 
-		// Initializing channels to enter
-		guilds := strings.Split(viper.GetString("guild"), ",")
-		channels := strings.Split(viper.GetString("channel"), ",")
+	if len(guilds) != len(channels) {
+		lit.Error("Remember to add guilds and channels in pair!")
+		return
+	}
 
-		if len(guilds) != len(channels) {
-			lit.Error("Remember to add guilds and channels in pair!")
-			return
-		}
-
-		for i := range guilds {
-			servers = append(servers, server{
-				guild:   guilds[i],
-				channel: channels[i],
-			})
-		}
-
+	for i := range guilds {
+		servers = append(servers, server{
+			guild:   guilds[i],
+			channel: channels[i],
+		})
 	}
 }
 
 func main() {
-
 	// Create a new Discord session using the provided bot token.
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -87,13 +91,13 @@ func main() {
 		return
 	}
 
-	fileInfo, err := ioutil.ReadDir("./audio_cache")
+	fileInfo, err := ioutil.ReadDir(cachePath)
 	if err != nil {
 		lit.Error("%s", err)
 		return
 	}
 
-	xmasLoop(dg, fileInfo)
+	go xmasLoop(dg, fileInfo)
 
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("xmasBot is now running.  Press CTRL-C to exit.")
@@ -106,7 +110,6 @@ func main() {
 }
 
 func ready(s *discordgo.Session, _ *discordgo.Ready) {
-
 	// Set the playing status.
 	err := s.UpdateGameStatus(0, "xmas songs")
 	if err != nil {
@@ -143,15 +146,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func xmasLoop(s *discordgo.Session, fileInfo []os.FileInfo) {
-
 	for i := range servers {
 		var err error
 		servers[i].vc, err = s.ChannelVoiceJoin(servers[i].guild, servers[i].channel, false, true)
 		if err != nil {
 			lit.Error("Can't join, %s", err.Error())
-		}
 
-		_ = servers[i].vc.Speaking(true)
+			// We can't join the channel, just remove it
+			remove(servers, i)
+		} else {
+			_ = servers[i].vc.Speaking(true)
+		}
 	}
 
 	for {

@@ -1,19 +1,20 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/bwmarrin/lit"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 )
 
 func downloadSong(link string) error {
 	// Gets info about songs
-	out, err := exec.Command("youtube-dl", "--ignore-errors", "-q", "--no-warnings", "-j", link).CombinedOutput()
+	out, err := exec.Command("yt-dlp", "--ignore-errors", "-q", "--no-warnings", "-j", link).CombinedOutput()
 
 	// Parse output as string, splitting it on every newline
 	splittedOut := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
@@ -27,8 +28,8 @@ func downloadSong(link string) error {
 
 	// Check if youtube-dl returned something
 	if strings.TrimSpace(splittedOut[0]) == "" {
-		lit.Error("youtube-dl returned no songs")
-		return errors.New("youtube-dl returned no songs")
+		lit.Error("yt-dlp returned no songs")
+		return errors.New("yt-dlp returned no songs")
 	}
 
 	var ytdl YoutubeDL
@@ -36,37 +37,38 @@ func downloadSong(link string) error {
 	// We parse every track as individual json, because youtube-dl
 	for _, singleJSON := range splittedOut {
 		_ = json.Unmarshal([]byte(singleJSON), &ytdl)
+
+		cmds := download(ytdl.WebpageURL)
 		fileName := ytdl.ID + "-" + ytdl.Extractor
 
-		// Checks if video is already downloaded
-		info, err := os.Stat("./audio_cache/" + fileName + ".dca")
-
-		// If not, we download and convert it
-		if err != nil || info.Size() <= 0 {
-			var cmd *exec.Cmd
-
-			// Download and conversion to DCA
-			switch runtime.GOOS {
-			case "windows":
-				cmd = exec.Command("gen.bat", fileName)
-			default:
-				cmd = exec.Command("sh", "gen.sh", fileName)
-			}
-
-			cmd.Stdin = strings.NewReader(ytdl.WebpageURL)
-			out, err = cmd.CombinedOutput()
-
-			if err != nil {
-				splitted := strings.Split(string(out), "\n")
-
-				err := fmt.Sprintf("Can't download song: %s", splitted[len(splitted)-1])
-
-				lit.Error(err)
-				return errors.New(err)
-			}
+		if ytdl.Extractor == "generic" {
+			fileName = idGen(ytdl.WebpageURL) + "-" + ytdl.Extractor
 		}
 
+		// Opens the file, writes file to it, closes it
+		file, _ := os.OpenFile(cachePath+fileName+audioExtension, os.O_TRUNC|os.O_WRONLY, 0644)
+		cmds[2].Stdout = file
+
+		mutex.Lock()
+		cmdsStart(cmds)
+		cmdsWait(cmds)
+		_ = file.Close()
+		mutex.Unlock()
 	}
 
 	return nil
+}
+
+// remove removes the element at position i from the slice
+func remove(s []server, i int) []server {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
+}
+
+// idGen returns the first 11 characters of the SHA1 hash for the given link
+func idGen(link string) string {
+	h := sha1.New()
+	h.Write([]byte(link))
+
+	return strings.ToLower(base32.HexEncoding.EncodeToString(h.Sum(nil))[0:11])
 }

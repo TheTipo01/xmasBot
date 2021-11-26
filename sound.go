@@ -76,5 +76,4 @@ func playSound(fileName string, s *discordgo.Session) {
 
 	// Close the file
 	_ = file.Close()
-
 }

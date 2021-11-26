@@ -46,7 +46,7 @@ func downloadSong(link string) error {
 		}
 
 		// Opens the file, writes file to it, closes it
-		file, _ := os.OpenFile(cachePath+fileName+audioExtension, os.O_TRUNC|os.O_WRONLY, 0644)
+		file, _ := os.OpenFile(cachePath+fileName+audioExtension, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		cmds[2].Stdout = file
 
 		mutex.Lock()

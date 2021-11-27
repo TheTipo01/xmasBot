@@ -18,17 +18,17 @@ import (
 
 type Config struct {
 	Token   string `fig:"token" validate:"required"`
-	Guild   string `fig:"guild" validate:"required"`
-	Channel string `fig:"channel" validate:"required"`
-	Admin   string `fig:"admin" validate:"required"`
+	Servers []struct {
+		Guild   string `fig:"guild" validate:"required"`
+		Channel string `fig:"channel" validate:"required"`
+	}
+	Admin []string `fig:"admin" validate:"required"`
 }
 
-// Variables used for command line parameters
 var (
-	token   string
-	servers []server
-	admin   []string
-	mutex   = &sync.Mutex{}
+	cfg   Config
+	mutex = &sync.Mutex{}
+	vc    []*discordgo.VoiceConnection
 )
 
 const (
@@ -41,38 +41,25 @@ func init() {
 
 	rand.Seed(time.Now().UnixNano())
 
-	var cfg Config
 	err := fig.Load(&cfg, fig.File("config.yml"))
 	if err != nil {
 		lit.Error(err.Error())
 		return
 	}
 
-	token = cfg.Token
+	vc = make([]*discordgo.VoiceConnection, len(cfg.Servers))
 
-	// People that can add songs and restart the bot
-	admin = strings.Split(cfg.Admin, ",")
-
-	// Initializing channels to enter
-	guilds := strings.Split(cfg.Guild, ",")
-	channels := strings.Split(cfg.Channel, ",")
-
-	if len(guilds) != len(channels) {
-		lit.Error("Remember to add guilds and channels in pair!")
-		return
-	}
-
-	for i := range guilds {
-		servers = append(servers, server{
-			guild:   guilds[i],
-			channel: channels[i],
-		})
+	// Create folders used by the bot
+	if _, err = os.Stat(cachePath); err != nil {
+		if err = os.Mkdir(cachePath, 0755); err != nil {
+			lit.Error("Cannot create %s, %s", cachePath, err)
+		}
 	}
 }
 
 func main() {
 	// Create a new Discord session using the provided bot token.
-	dg, err := discordgo.New("Bot " + token)
+	dg, err := discordgo.New("Bot " + cfg.Token)
 	if err != nil {
 		fmt.Println("error creating Discord session,", err)
 		return
@@ -123,7 +110,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	for _, u := range admin {
+	for _, u := range cfg.Admin {
 		if u == m.Author.ID {
 			splitted := strings.Split(m.Content, " ")
 
@@ -146,16 +133,16 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func xmasLoop(s *discordgo.Session, fileInfo []os.FileInfo) {
-	for i := range servers {
+	for i := range cfg.Servers {
 		var err error
-		servers[i].vc, err = s.ChannelVoiceJoin(servers[i].guild, servers[i].channel, false, true)
+		vc[i], err = s.ChannelVoiceJoin(cfg.Servers[i].Guild, cfg.Servers[i].Channel, false, true)
 		if err != nil {
 			lit.Error("Can't join, %s", err.Error())
 
 			// We can't join the channel, just remove it
-			remove(servers, i)
+			remove(&cfg, i)
 		} else {
-			_ = servers[i].vc.Speaking(true)
+			_ = vc[i].Speaking(true)
 		}
 	}
 

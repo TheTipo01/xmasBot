@@ -60,9 +60,9 @@ func downloadSong(link string) error {
 }
 
 // remove removes the element at position i from the slice
-func remove(s []server, i int) []server {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
+func remove(cfg *Config, i int) {
+	cfg.Servers[i] = cfg.Servers[len(cfg.Servers)-1]
+	cfg.Servers = cfg.Servers[:len(cfg.Servers)-1]
 }
 
 // idGen returns the first 11 characters of the SHA1 hash for the given link

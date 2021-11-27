@@ -2,8 +2,13 @@
 token: ""
 
 # Guild & channel ids to join. Add them in pair, separated by a comma
-guild: ""
-channel: ""
+servers:
+  - guild: 111111111111111111
+    channel: 222222222222222222
+  - guild: 333333333333333333
+    channel: 444444444444444444
 
-# User ids that can add song and restart the bot. Separate multiple ids by comma
-admin: ""
+# User ids that can add song and restart the bot.
+admin:
+  - 111111111111111111
+  - 222222222222222222

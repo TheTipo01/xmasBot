@@ -25,10 +25,22 @@ type Config struct {
 	Admin []string `fig:"admin" validate:"required"`
 }
 
+type Server struct {
+	channel string
+	vc      *discordgo.VoiceConnection
+}
+
 var (
-	cfg   Config
+	// Discord token
+	token string
+	// Mutex for downloading songs one at a time
 	mutex = &sync.Mutex{}
-	vc    []*discordgo.VoiceConnection
+	// Server map, for holding infos about a server
+	servers = make(map[string]*Server)
+	// Admins holds who is allowed to add song
+	admins = make(map[string]bool)
+	// files holds all the songs
+	files []string
 )
 
 const (
@@ -41,13 +53,22 @@ func init() {
 
 	rand.Seed(time.Now().UnixNano())
 
+	var cfg Config
 	err := fig.Load(&cfg, fig.File("config.yml"))
 	if err != nil {
 		lit.Error(err.Error())
 		return
 	}
 
-	vc = make([]*discordgo.VoiceConnection, len(cfg.Servers))
+	token = cfg.Token
+
+	for _, s := range cfg.Servers {
+		servers[s.Guild] = &Server{channel: s.Channel}
+	}
+
+	for _, a := range cfg.Admin {
+		admins[a] = true
+	}
 
 	// Create folders used by the bot
 	if _, err = os.Stat(cachePath); err != nil {
@@ -59,7 +80,7 @@ func init() {
 
 func main() {
 	// Create a new Discord session using the provided bot token.
-	dg, err := discordgo.New("Bot " + cfg.Token)
+	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		fmt.Println("error creating Discord session,", err)
 		return
@@ -78,13 +99,19 @@ func main() {
 		return
 	}
 
+	// Initial reading
 	fileInfo, err := ioutil.ReadDir(cachePath)
 	if err != nil {
 		lit.Error("%s", err)
 		return
 	}
 
-	go xmasLoop(dg, fileInfo)
+	files = make([]string, len(fileInfo))
+	for i, f := range fileInfo {
+		files[i] = f.Name()
+	}
+
+	go xmasLoop(dg)
 
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("xmasBot is now running.  Press CTRL-C to exit.")
@@ -102,7 +129,6 @@ func ready(s *discordgo.Session, _ *discordgo.Ready) {
 	if err != nil {
 		lit.Error("Can't set status, %s", err)
 	}
-
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -110,45 +136,37 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	for _, u := range cfg.Admin {
-		if u == m.Author.ID {
-			splitted := strings.Split(m.Content, " ")
+	if admins[m.Author.ID] {
+		splitted := strings.Split(m.Content, " ")
 
-			switch splitted[0] {
-			case "add":
-				err := downloadSong(splitted[1])
-				if err != nil {
-					_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
-				} else {
-					_, _ = s.ChannelMessageSend(m.ChannelID, "Song added successfully!\nRemember to restart the bot to add the song to the queue")
-				}
-				break
-			case "restart":
-				_, _ = s.ChannelMessageSend(m.ChannelID, "Restarting...")
-				os.Exit(0)
+		if strings.ToLower(splitted[0]) == "add" {
+			err := downloadSong(splitted[1])
+			if err != nil {
+				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
+			} else {
+				_, _ = s.ChannelMessageSend(m.ChannelID, "Song added successfully!")
 			}
 		}
 	}
-
 }
 
-func xmasLoop(s *discordgo.Session, fileInfo []os.FileInfo) {
-	for i := range cfg.Servers {
+func xmasLoop(s *discordgo.Session) {
+	for guild, server := range servers {
 		var err error
-		vc[i], err = s.ChannelVoiceJoin(cfg.Servers[i].Guild, cfg.Servers[i].Channel, false, true)
+		server.vc, err = s.ChannelVoiceJoin(guild, server.channel, false, true)
 		if err != nil {
 			lit.Error("Can't join, %s", err.Error())
 
 			// We can't join the channel, just remove it
-			remove(&cfg, i)
+			delete(servers, guild)
 		} else {
-			_ = vc[i].Speaking(true)
+			_ = server.vc.Speaking(true)
 		}
 	}
 
 	for {
-		for _, v := range rand.Perm(len(fileInfo)) {
-			playSound(fileInfo[v].Name(), s)
+		for _, v := range rand.Perm(len(files)) {
+			playSound(files[v], s)
 		}
 	}
 }

@@ -49,13 +49,14 @@ func playSound(fileName string, s *discordgo.Session) {
 			break
 		}
 
-		for i := range cfg.Servers {
+		for guild, server := range servers {
 			wg.Add(1)
-			i := i
+			server := server
+			guild := guild
 			go func() {
 				// Send data in a goroutine
 				go func() {
-					vc[i].OpusSend <- InBuf
+					server.vc.OpusSend <- InBuf
 					c1 <- "ok"
 				}()
 
@@ -64,8 +65,8 @@ func playSound(fileName string, s *discordgo.Session) {
 				case _ = <-c1:
 					wg.Done()
 					break
-				case <-time.After(time.Second / 3):
-					vc[i], _ = s.ChannelVoiceJoin(cfg.Servers[i].Guild, cfg.Servers[i].Channel, false, true)
+				case <-time.After(time.Second / 2):
+					server.vc, _ = s.ChannelVoiceJoin(guild, server.channel, false, true)
 					wg.Done()
 				}
 			}()

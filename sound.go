@@ -6,7 +6,6 @@ import (
 	"github.com/bwmarrin/lit"
 	"io"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -21,9 +20,6 @@ func playSound(fileName string, s *discordgo.Session) {
 
 	// Channel to send ok messages
 	c1 := make(chan string, 1)
-
-	// WaitGroup to wait until the packets are sent to every vc
-	wg := sync.WaitGroup{}
 
 	for {
 		// Read opus frame length from dca file.
@@ -50,29 +46,20 @@ func playSound(fileName string, s *discordgo.Session) {
 		}
 
 		for guild, server := range servers {
-			wg.Add(1)
-			server := server
-			guild := guild
+			// Send data in a goroutine
 			go func() {
-				// Send data in a goroutine
-				go func() {
-					server.vc.OpusSend <- InBuf
-					c1 <- "ok"
-				}()
-
-				// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
-				select {
-				case _ = <-c1:
-					wg.Done()
-					break
-				case <-time.After(time.Second / 2):
-					server.vc, _ = s.ChannelVoiceJoin(guild, server.channel, false, true)
-					wg.Done()
-				}
+				server.vc.OpusSend <- InBuf
+				c1 <- "ok"
 			}()
-		}
 
-		wg.Wait()
+			// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
+			select {
+			case _ = <-c1:
+				break
+			case <-time.After(time.Second / 2):
+				server.vc, _ = s.ChannelVoiceJoin(guild, server.channel, false, true)
+			}
+		}
 	}
 
 	// Close the file

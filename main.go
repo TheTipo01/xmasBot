@@ -37,7 +37,7 @@ var (
 	mutex = &sync.Mutex{}
 	// Server map, for holding infos about a server
 	servers = make(map[string]*Server)
-	// Admins holds who is allowed to add song
+	// Admins holds who are allowed to add songs
 	admins = make(map[string]bool)
 	// files holds all the songs
 	files []string

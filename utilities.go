@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/lit"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 func downloadSong(link string) error {
@@ -66,4 +70,48 @@ func idGen(link string) string {
 	h.Write([]byte(link))
 
 	return strings.ToLower(base32.HexEncoding.EncodeToString(h.Sum(nil))[0:11])
+}
+
+// isCommandEqual compares two command by marshalling them to JSON. Yes, I know. I don't want to write recursive things.
+func isCommandEqual(c *discordgo.ApplicationCommand, v *discordgo.ApplicationCommand) bool {
+	c.Version = ""
+	c.ID = ""
+	c.ApplicationID = ""
+	c.Type = 0
+	cBytes, _ := json.Marshal(&c)
+
+	v.Version = ""
+	v.ID = ""
+	v.ApplicationID = ""
+	v.Type = 0
+	vBytes, _ := json.Marshal(&v)
+
+	return bytes.Compare(cBytes, vBytes) == 0
+}
+
+// Checks if a string is a valid URL
+func isValidURL(toTest string) bool {
+	_, err := url.ParseRequestURI(toTest)
+	return err == nil
+}
+
+func sendEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction) {
+	sliceEmbed := []*discordgo.MessageEmbed{embed}
+	err := s.InteractionRespond(i, &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Embeds: sliceEmbed}})
+	if err != nil {
+		lit.Error("InteractionRespond failed: %s", err)
+		return
+	}
+}
+
+func sendAndDeleteEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, wait time.Duration) {
+	sendEmbedInteraction(s, embed, i)
+
+	time.Sleep(wait)
+
+	err := s.InteractionResponseDelete(s.State.User.ID, i)
+	if err != nil {
+		lit.Error("InteractionResponseDelete failed: %s", err)
+		return
+	}
 }

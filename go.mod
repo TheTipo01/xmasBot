@@ -3,7 +3,7 @@ module xmasBot
 go 1.15
 
 require (
-	github.com/bwmarrin/discordgo v0.23.3-0.20211224173850-fccf6db03e62
+	github.com/bwmarrin/discordgo v0.23.3-0.20211228023845-29269347e820
 	github.com/bwmarrin/lit v0.0.0-20190813132558-fd4b44871312
 	github.com/kkyr/fig v0.3.0
 	github.com/kr/pretty v0.2.0 // indirect

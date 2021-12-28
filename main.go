@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,9 +35,9 @@ var (
 	// Mutex for downloading songs one at a time
 	mutex = &sync.Mutex{}
 	// Server map, for holding infos about a server
-	servers = make(map[string]*Server)
+	servers map[string]*Server
 	// Admins holds who are allowed to add songs
-	admins = make(map[string]bool)
+	admins map[string]bool
 	// files holds all the songs
 	files []string
 )
@@ -62,10 +61,12 @@ func init() {
 
 	token = cfg.Token
 
+	servers = make(map[string]*Server, len(cfg.Servers))
 	for _, s := range cfg.Servers {
 		servers[s.Guild] = &Server{channel: s.Channel}
 	}
 
+	admins = make(map[string]bool, len(cfg.Admin))
 	for _, a := range cfg.Admin {
 		admins[a] = true
 	}
@@ -87,10 +88,16 @@ func main() {
 	}
 
 	// We just need private messages and voiceStates
-	dg.Identify.Intents = discordgo.MakeIntent(discordgo.IntentsGuildVoiceStates | discordgo.IntentsDirectMessages)
+	dg.Identify.Intents = discordgo.IntentsGuildVoiceStates
 
-	dg.AddHandler(messageCreate)
 	dg.AddHandler(ready)
+
+	// Add commands handler
+	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		}
+	})
 
 	// Open a websocket connection to Discord and begin listening.
 	err = dg.Open()
@@ -129,22 +136,40 @@ func ready(s *discordgo.Session, _ *discordgo.Ready) {
 	if err != nil {
 		lit.Error("Can't set status, %s", err)
 	}
-}
 
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if m.Author.Bot || s.State.User.ID == m.Author.ID {
-		return
-	}
+	// Checks for unused commands and deletes them
+	if cmds, err := s.ApplicationCommands(s.State.User.ID, ""); err == nil {
+		found := false
 
-	if admins[m.Author.ID] {
-		splitted := strings.Split(m.Content, " ")
+		for _, l := range commands {
+			found = false
 
-		if strings.ToLower(splitted[0]) == "add" {
-			err := downloadSong(splitted[1])
-			if err != nil {
-				_, _ = s.ChannelMessageSend(m.ChannelID, err.Error())
-			} else {
-				_, _ = s.ChannelMessageSend(m.ChannelID, "Song added successfully!")
+			for _, o := range cmds {
+				// We compare every online command with the ones locally stored, to find if a command with the same name exists
+				if l.Name == o.Name {
+					// If the options of the command are not equal, we re-register it
+					if !isCommandEqual(l, o) {
+						lit.Info("Re-registering command `%s`", l.Name)
+
+						_, err = s.ApplicationCommandCreate(s.State.User.ID, "", l)
+						if err != nil {
+							lit.Error("Cannot create '%s' command: %s", l.Name, err)
+						}
+					}
+
+					found = true
+					break
+				}
+			}
+
+			// If we didn't found a match for the locally stored command, it means the command is new. We register it
+			if !found {
+				lit.Info("Registering new command `%s`", l.Name)
+
+				_, err = s.ApplicationCommandCreate(s.State.User.ID, "", l)
+				if err != nil {
+					lit.Error("Cannot create '%s' command: %s", l.Name, err)
+				}
 			}
 		}
 	}

@@ -27,25 +27,32 @@ var (
 			if (i.User != nil && admins[i.User.ID]) || (i.Member != nil && admins[i.Member.User.ID]) {
 				url := i.ApplicationCommandData().Options[0].StringValue()
 				if isValidURL(url) {
+					c := make(chan int)
+					go sendEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+						AddField("Downloading", "Please wait...").
+						SetColor(0x7289DA).MessageEmbed, i.Interaction, &c)
+
 					err := downloadSong(url)
+
+					<-c
 					if err != nil {
-						sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+						modifyInteractionAndDelete(s, NewEmbed().SetTitle(s.State.User.Username).
 							AddField("Error", err.Error()).
-							SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*5)
+							SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 					} else {
-						sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+						modifyInteractionAndDelete(s, NewEmbed().SetTitle(s.State.User.Username).
 							AddField("Success", "Song added successfully!").
 							SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*5)
 					}
 				} else {
 					sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
 						AddField("Error", "Not a valid URL!").
-						SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*5)
+						SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 				}
 			} else {
 				sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
 					AddField("Error", "You're not in the admin list!").
-					SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*5)
+					SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 			}
 		},
 	}

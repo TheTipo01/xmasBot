@@ -159,3 +159,4 @@ config.yml
 audio_cache/
 *.db
 dist/
+xmasBot

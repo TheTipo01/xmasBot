@@ -1,4 +1,4 @@
-module xmasBot
+module github.com/TheTipo01/xmasBot
 
 go 1.15
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/bwmarrin/lit"
 	"github.com/kkyr/fig"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -107,7 +106,7 @@ func main() {
 	}
 
 	// Initial reading
-	fileInfo, err := ioutil.ReadDir(cachePath)
+	fileInfo, err := os.ReadDir(cachePath)
 	if err != nil {
 		lit.Error("%s", err)
 		return

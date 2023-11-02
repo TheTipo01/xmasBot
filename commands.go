@@ -9,7 +9,7 @@ var (
 	commands = []*discordgo.ApplicationCommand{
 		{
 			Name:        "add",
-			Description: "Adds a song to the bot's plethora",
+			Description: "Adds a song to the bots plethora",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,

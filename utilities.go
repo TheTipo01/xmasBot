@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/json"
@@ -24,10 +23,7 @@ func downloadSong(link string) error {
 	splittedOut := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
 
 	if err != nil {
-		err := fmt.Sprintf("Can't get info about song: %s", splittedOut[len(splittedOut)-1])
-
-		lit.Error(err)
-		return errors.New(err)
+		return errors.New(fmt.Sprintf("Can't get info about song: %s", splittedOut[len(splittedOut)-1]))
 	}
 
 	// Check if youtube-dl returned something
@@ -49,11 +45,11 @@ func downloadSong(link string) error {
 			fileName = idGen(ytdl.WebpageURL) + "-" + ytdl.Extractor
 		}
 
+		mutex.Lock()
 		// Opens the file, writes file to it, closes it
 		file, _ := os.OpenFile(cachePath+fileName+audioExtension, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		cmds[2].Stdout = file
 
-		mutex.Lock()
 		cmdsStart(cmds)
 		cmdsWait(cmds)
 		_ = file.Close()
@@ -70,23 +66,6 @@ func idGen(link string) string {
 	h.Write([]byte(link))
 
 	return strings.ToLower(base32.HexEncoding.EncodeToString(h.Sum(nil))[0:11])
-}
-
-// isCommandEqual compares two command by marshalling them to JSON. Yes, I know. I don't want to write recursive things.
-func isCommandEqual(c *discordgo.ApplicationCommand, v *discordgo.ApplicationCommand) bool {
-	c.Version = ""
-	c.ID = ""
-	c.ApplicationID = ""
-	c.Type = 0
-	cBytes, _ := json.Marshal(&c)
-
-	v.Version = ""
-	v.ID = ""
-	v.ApplicationID = ""
-	v.Type = 0
-	vBytes, _ := json.Marshal(&v)
-
-	return bytes.Compare(cBytes, vBytes) == 0
 }
 
 // Checks if a string is a valid URL

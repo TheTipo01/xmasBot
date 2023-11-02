@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
-	"github.com/bwmarrin/discordgo"
+	"errors"
 	"github.com/bwmarrin/lit"
 	"io"
 	"os"
-	"time"
 )
 
-func playSound(fileName string, s *discordgo.Session) {
+func playSound(fileName string) {
 	var opuslen int16
 
 	file, err := os.Open(cachePath + fileName)
@@ -17,16 +17,16 @@ func playSound(fileName string, s *discordgo.Session) {
 		lit.Error("Error opening dca file: %s", err)
 		return
 	}
+	defer file.Close()
 
-	// Channel to send ok messages
-	c1 := make(chan string, 1)
+	buffer := bufio.NewReader(file)
 
 	for {
 		// Read opus frame length from dca file.
-		err = binary.Read(file, binary.LittleEndian, &opuslen)
+		err = binary.Read(buffer, binary.LittleEndian, &opuslen)
 
-		// If this is the end of the file, just return.
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		// If this is the end of the file, return.
+		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
 			break
 		}
 
@@ -37,7 +37,7 @@ func playSound(fileName string, s *discordgo.Session) {
 
 		// Read encoded pcm from dca file.
 		InBuf := make([]byte, opuslen)
-		err = binary.Read(file, binary.LittleEndian, &InBuf)
+		err = binary.Read(buffer, binary.LittleEndian, &InBuf)
 
 		// Should not be any end of file errors
 		if err != nil {
@@ -45,23 +45,8 @@ func playSound(fileName string, s *discordgo.Session) {
 			break
 		}
 
-		for guild, server := range servers {
-			// Send data in a goroutine
-			go func() {
-				server.vc.OpusSend <- InBuf
-				c1 <- "ok"
-			}()
-
-			// So if the bot gets disconnect/moved we can rejoin the original channel and continue playing songs
-			select {
-			case _ = <-c1:
-				break
-			case <-time.After(time.Second / 2):
-				server.vc, _ = s.ChannelVoiceJoin(guild, server.channel, false, true)
-			}
+		for _, i := range servers {
+			i.vc.OpusSend <- InBuf
 		}
 	}
-
-	// Close the file
-	_ = file.Close()
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/lit"
 	"github.com/kkyr/fig"
 	"math/rand"
@@ -9,9 +10,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 type Config struct {
@@ -48,8 +46,6 @@ const (
 
 func init() {
 	lit.LogLevel = lit.LogInformational
-
-	rand.Seed(time.Now().UnixNano())
 
 	var cfg Config
 	err := fig.Load(&cfg, fig.File("config.yml"))
@@ -90,6 +86,7 @@ func main() {
 	dg.Identify.Intents = discordgo.IntentsGuildVoiceStates
 
 	dg.AddHandler(ready)
+	dg.AddHandler(voiceStateUpdate)
 
 	// Add commands handler
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -101,8 +98,14 @@ func main() {
 	// Open a websocket connection to Discord and begin listening.
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("error opening connection,", err)
+		lit.Error("error opening connection,", err)
 		return
+	}
+
+	// Register commands
+	_, err = dg.ApplicationCommandBulkOverwrite(dg.State.User.ID, "", commands)
+	if err != nil {
+		lit.Error("Can't register commands, %s", err)
 	}
 
 	// Initial reading
@@ -135,43 +138,6 @@ func ready(s *discordgo.Session, _ *discordgo.Ready) {
 	if err != nil {
 		lit.Error("Can't set status, %s", err)
 	}
-
-	// Checks for unused commands and deletes them
-	if cmds, err := s.ApplicationCommands(s.State.User.ID, ""); err == nil {
-		found := false
-
-		for _, l := range commands {
-			found = false
-
-			for _, o := range cmds {
-				// We compare every online command with the ones locally stored, to find if a command with the same name exists
-				if l.Name == o.Name {
-					// If the options of the command are not equal, we re-register it
-					if !isCommandEqual(l, o) {
-						lit.Info("Re-registering command `%s`", l.Name)
-
-						_, err = s.ApplicationCommandCreate(s.State.User.ID, "", l)
-						if err != nil {
-							lit.Error("Cannot create '%s' command: %s", l.Name, err)
-						}
-					}
-
-					found = true
-					break
-				}
-			}
-
-			// If we didn't found a match for the locally stored command, it means the command is new. We register it
-			if !found {
-				lit.Info("Registering new command `%s`", l.Name)
-
-				_, err = s.ApplicationCommandCreate(s.State.User.ID, "", l)
-				if err != nil {
-					lit.Error("Cannot create '%s' command: %s", l.Name, err)
-				}
-			}
-		}
-	}
 }
 
 func xmasLoop(s *discordgo.Session) {
@@ -190,7 +156,23 @@ func xmasLoop(s *discordgo.Session) {
 
 	for {
 		for _, v := range rand.Perm(len(files)) {
-			playSound(files[v], s)
+			playSound(files[v])
+		}
+	}
+}
+
+// Update the voice channel when the bot is moved
+func voiceStateUpdate(s *discordgo.Session, v *discordgo.VoiceStateUpdate) {
+	// If the bot is moved to another channel
+	if v.UserID == s.State.User.ID && v.ChannelID == "" {
+		// If the bot has been disconnected from the voice channel, reconnect it
+		if _, ok := servers[v.GuildID]; ok && servers[v.GuildID].vc != nil {
+			err := servers[v.GuildID].vc.ChangeChannel(servers[v.GuildID].channel, false, true)
+			if err != nil {
+				lit.Error("Can't join, %s", err.Error())
+			} else {
+				_ = servers[v.GuildID].vc.Speaking(true)
+			}
 		}
 	}
 }

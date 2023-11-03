@@ -1,7 +1,7 @@
 # Discord bot token
 token: ""
 
-# Guild & channel ids to join. Add them in pair, separated by a comma
+# Guild & channel ids to join.
 servers:
   - guild: 111111111111111111
     channel: 222222222222222222

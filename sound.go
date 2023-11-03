@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/lit"
 	"io"
 	"os"
+	"sync"
 )
 
 func playSound(fileName string) {
@@ -20,6 +21,7 @@ func playSound(fileName string) {
 	defer file.Close()
 
 	buffer := bufio.NewReader(file)
+	wg := sync.WaitGroup{}
 
 	for {
 		// Read opus frame length from dca file.
@@ -45,8 +47,14 @@ func playSound(fileName string) {
 			break
 		}
 
+		wg.Wait()
+		wg.Add(len(servers))
 		for _, i := range servers {
-			i.vc.OpusSend <- InBuf
+			i := i
+			go func() {
+				defer wg.Done()
+				i.vc.OpusSend <- InBuf
+			}()
 		}
 	}
 }

@@ -14,14 +14,13 @@ builds:
       - 386
       - arm
       - arm64
+    ignore:
+      - goos: windows
+        goarch: 386
+      - goos: windows
+        goarch: arm
 archives:
   - format: zip
-    replacements:
-      '386': i386
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      amd64: x86_64
     files:
       - README.md
       - LICENSE

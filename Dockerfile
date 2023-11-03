@@ -9,7 +9,12 @@ ARG TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 go mod download
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o xmasBot
 
-FROM alpine
+FROM thetipo01/dca
+
+RUN apk add --no-cache \
+  ffmpeg \
+  yt-dlp \
+  gcompat
 
 COPY --from=build /xmasBot/xmasBot /usr/bin/
 

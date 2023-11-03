@@ -1,0 +1,10 @@
+version: '3.9'
+services:
+  bot:
+    image: thetipo01/xmasbot
+    restart: always
+    volumes:
+      - ./audio_cache:/audio_cache
+      - ${PWD}/config.yml:/config.yml
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro

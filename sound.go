@@ -1,60 +1,40 @@
 package main
 
 import (
-	"bufio"
-	"encoding/binary"
-	"errors"
 	"github.com/bwmarrin/lit"
-	"io"
+	"github.com/diamondburned/oggreader"
 	"os"
-	"sync"
 )
 
 func playSound(fileName string) {
-	var opuslen int16
-
 	file, err := os.Open(cachePath + fileName)
 	if err != nil {
-		lit.Error("Error opening dca file: %s", err)
+		lit.Error("Error opening opus file: %s", err)
 		return
 	}
 	defer file.Close()
 
-	buffer := bufio.NewReader(file)
-	wg := sync.WaitGroup{}
+	if err = oggreader.DecodeBuffered(MiddlemanWriter{}, file); err != nil {
+		lit.Error("Error playing opus file: %s", err)
+	}
+}
 
-	for {
-		// Read opus frame length from dca file.
-		err = binary.Read(buffer, binary.LittleEndian, &opuslen)
+type MiddlemanWriter struct{}
 
-		// If this is the end of the file, return.
-		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
-			break
-		}
+func (m MiddlemanWriter) Write(p []byte) (n int, err error) {
+	writerMutex.Lock()
 
-		if err != nil {
-			lit.Error("Error reading from dca file: %s", err)
-			break
-		}
+	// Try to write what we received to the master writer
+	n, err = w.Write(p)
+	if err != nil {
+		writerMutex.Unlock()
 
-		// Read encoded pcm from dca file.
-		InBuf := make([]byte, opuslen)
-		err = binary.Read(buffer, binary.LittleEndian, &InBuf)
+		// If we can't write, we're probably disconnected or moved: wait for the voiceStateUpdate to recreate the writer
+		<-done
+		return m.Write(p)
+	} else {
+		writerMutex.Unlock()
 
-		// Should not be any end of file errors
-		if err != nil {
-			lit.Error("Error reading from dca file: %s", err)
-			break
-		}
-
-		wg.Wait()
-		wg.Add(len(servers))
-		for _, i := range servers {
-			i := i
-			go func() {
-				defer wg.Done()
-				i.vc.OpusSend <- InBuf
-			}()
-		}
+		return n, err
 	}
 }

@@ -6,16 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/lit"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 func downloadSong(link string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	// Gets info about songs
 	out, err := exec.Command("yt-dlp", "--ignore-errors", "-q", "--no-warnings", "-j", link).CombinedOutput()
 
@@ -45,16 +46,14 @@ func downloadSong(link string) error {
 			fileName = idGen(ytdl.WebpageURL) + "-" + ytdl.Extractor
 		}
 
-		mutex.Lock()
 		// Opens the file, writes file to it, closes it
 		file, _ := os.OpenFile(cachePath+fileName+audioExtension, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		cmds[2].Stdout = file
+		cmds[len(cmds)-1].Stdout = file
 
 		cmdsStart(cmds)
 		cmdsWait(cmds)
 		_ = file.Close()
 		files = append(files, fileName+audioExtension)
-		mutex.Unlock()
 	}
 
 	return nil
@@ -72,52 +71,4 @@ func idGen(link string) string {
 func isValidURL(toTest string) bool {
 	_, err := url.ParseRequestURI(toTest)
 	return err == nil
-}
-
-func sendEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, c *chan int) {
-	sliceEmbed := []*discordgo.MessageEmbed{embed}
-	err := s.InteractionRespond(i, &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Embeds: sliceEmbed}})
-	if err != nil {
-		lit.Error("InteractionRespond failed: %s", err)
-		return
-	}
-
-	if c != nil {
-		*c <- 1
-	}
-}
-
-func sendAndDeleteEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, wait time.Duration) {
-	sendEmbedInteraction(s, embed, i, nil)
-
-	time.Sleep(wait)
-
-	err := s.InteractionResponseDelete(i)
-	if err != nil {
-		lit.Error("InteractionResponseDelete failed: %s", err)
-		return
-	}
-}
-
-// Modify an already sent interaction
-func modifyInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction) {
-	sliceEmbed := []*discordgo.MessageEmbed{embed}
-	_, err := s.InteractionResponseEdit(i, &discordgo.WebhookEdit{Embeds: &sliceEmbed})
-	if err != nil {
-		lit.Error("InteractionResponseEdit failed: %s", err)
-		return
-	}
-}
-
-// Modify an already sent interaction and deletes it after the specified wait time
-func modifyInteractionAndDelete(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, wait time.Duration) {
-	modifyInteraction(s, embed, i)
-
-	time.Sleep(wait)
-
-	err := s.InteractionResponseDelete(i)
-	if err != nil {
-		lit.Error("InteractionResponseDelete failed: %s", err)
-		return
-	}
 }

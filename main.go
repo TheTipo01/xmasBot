@@ -9,7 +9,6 @@ import (
 	"github.com/diamondburned/arikawa/v3/gateway"
 	"github.com/diamondburned/arikawa/v3/voice/udp"
 	"github.com/kkyr/fig"
-	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -21,15 +20,6 @@ import (
 	"github.com/diamondburned/arikawa/v3/state"
 	"github.com/diamondburned/arikawa/v3/voice"
 )
-
-type Config struct {
-	Token   string `fig:"token" validate:"required"`
-	Servers []struct {
-		Guild   string `fig:"guild" validate:"required"`
-		Channel string `fig:"channel" validate:"required"`
-	}
-	Admin []string `fig:"admin" validate:"required"`
-}
 
 var (
 	// Discord token
@@ -44,12 +34,8 @@ var (
 	files []string
 	// State
 	d *state.State
-	// Master writer
-	w io.Writer
-	// Channel for notifying the middleman writer
-	done = make(chan struct{})
-	// Writer mutex
-	writerMutex = &sync.Mutex{}
+	// Ensures data integrity for the servers map
+	serversMutex = &sync.Mutex{}
 )
 
 const (
@@ -155,8 +141,6 @@ func xmasLoop(s *state.State, ctx context.Context) {
 		}
 	}
 
-	w = generateWriter()
-
 	for {
 		for _, v := range rand.Perm(len(files)) {
 			playSound(files[v])
@@ -183,49 +167,28 @@ func newVoiceSession(s *state.State, ctx context.Context, channel discord.Channe
 	return v, err
 }
 
-func generateWriter() io.Writer {
-	// Convert the voice sessions to a writer
-	writers := make([]io.Writer, 0, len(servers))
-	for _, v := range servers {
-		writers = append(writers, v.vs)
-	}
-
-	return io.MultiWriter(writers...)
-}
-
 func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
 	u, _ := d.Me()
 
 	// Check if the user is us, and we got moved / disconnected
-	if v.UserID == u.ID && v.ChannelID != servers[v.GuildID].channel {
-		// Find the voice session
-		for guild, server := range servers {
-			if guild == v.GuildID {
-				var err error
+	if v.UserID == u.ID && v.ChannelID.IsValid() && v.ChannelID != servers[v.GuildID].channel {
+		serversMutex.Lock()
+		defer serversMutex.Unlock()
+		servers[v.GuildID].channel = v.ChannelID
+	}
+}
 
-				channel := server.channel
-				if v.ChannelID.IsValid() {
-					channel = v.ChannelID
-					servers[guild].channel = v.ChannelID
-				}
+func reconnect(guild discord.GuildID) {
+	var err error
 
-				// Recreate the voice session
-				server.vs, err = newVoiceSession(d, context.Background(), channel)
-				if err != nil {
-					lit.Error("Can't join, %s", err.Error())
-					// We can't join the channel, just remove it
-					delete(servers, guild)
-				} else {
-					writerMutex.Lock()
+	serversMutex.Lock()
+	defer serversMutex.Unlock()
 
-					// Update the writer
-					w = generateWriter()
-
-					writerMutex.Unlock()
-				}
-			}
-		}
-
-		done <- struct{}{}
+	// Recreate the voice session
+	servers[guild].vs, err = newVoiceSession(d, context.Background(), servers[guild].channel)
+	if err != nil {
+		lit.Error("Can't join, %s", err.Error())
+		// We can't join the channel, just remove it
+		delete(servers, guild)
 	}
 }

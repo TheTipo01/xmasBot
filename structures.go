@@ -16,3 +16,12 @@ type YoutubeDL struct {
 	ID         string `json:"id"`
 	WebpageURL string `json:"webpage_url"`
 }
+
+type Config struct {
+	Token   string `fig:"token" validate:"required"`
+	Servers []struct {
+		Guild   string `fig:"guild" validate:"required"`
+		Channel string `fig:"channel" validate:"required"`
+	}
+	Admin []string `fig:"admin" validate:"required"`
+}

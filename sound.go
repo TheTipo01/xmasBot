@@ -22,19 +22,13 @@ func playSound(fileName string) {
 type MiddlemanWriter struct{}
 
 func (m MiddlemanWriter) Write(p []byte) (n int, err error) {
-	writerMutex.Lock()
-
 	// Try to write what we received to the master writer
-	n, err = w.Write(p)
-	if err != nil {
-		writerMutex.Unlock()
-
-		// If we can't write, we're probably disconnected or moved: wait for the voiceStateUpdate to recreate the writer
-		<-done
-		return m.Write(p)
-	} else {
-		writerMutex.Unlock()
-
-		return n, err
+	for g, s := range servers {
+		_, err = s.vs.Write(p)
+		if err != nil {
+			reconnect(g)
+		}
 	}
+
+	return len(p), nil
 }

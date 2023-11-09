@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,9 +34,10 @@ var (
 	// files holds all the songs
 	files []string
 	// State
-	d *state.State
+	s *state.State
 	// Ensures data integrity for the servers map
 	serversMutex = &sync.Mutex{}
+	started      atomic.Bool
 )
 
 const (
@@ -94,12 +96,12 @@ func init() {
 
 func main() {
 	// Create a new Discord session using the provided bot token.
-	d = state.New("Bot " + token)
-	voice.AddIntents(d)
-	d.AddHandler(voiceStateUpdate)
+	s = state.New("Bot " + token)
+	voice.AddIntents(s)
+	s.AddHandler(voiceStateUpdate)
 
-	h := newHandler(d)
-	d.AddInteractionHandler(h)
+	h := newHandler(s)
+	s.AddInteractionHandler(h)
 
 	if err := cmdroute.OverwriteCommands(h.s, commands); err != nil {
 		lit.Error("cannot update commands:", err)
@@ -108,12 +110,16 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	if err := d.Open(ctx); err != nil {
+	s.AddHandler(func(e *gateway.ReadyEvent) {
+		if started.CompareAndSwap(false, true) {
+			go xmasLoop(s, ctx)
+		}
+	})
+
+	if err := s.Open(ctx); err != nil {
 		log.Fatalln("failed to open:", err)
 	}
-	defer d.Close()
-
-	go xmasLoop(d, ctx)
+	defer s.Close()
 
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("xmasBot is now running.  Press CTRL-C to exit.")
@@ -168,28 +174,23 @@ func newVoiceSession(s *state.State, ctx context.Context, channel discord.Channe
 }
 
 func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
-	u, _ := d.Me()
+	u, _ := s.Me()
 
 	serversMutex.Lock()
 	defer serversMutex.Unlock()
 
 	// Check if the user is us, and we got moved / disconnected
 	if v.UserID == u.ID && v.ChannelID.IsValid() && v.ChannelID != servers[v.GuildID].channel {
-		servers[v.GuildID].channel = v.ChannelID
+		servers[v.GuildID].newChannel = v.ChannelID
 	}
 }
 
 func reconnect(guild discord.GuildID) {
-	var err error
-
-	serversMutex.Lock()
-	defer serversMutex.Unlock()
+	if servers[guild].newChannel.IsValid() {
+		servers[guild].channel = servers[guild].newChannel
+		servers[guild].newChannel = 0
+	}
 
 	// Recreate the voice session
-	servers[guild].vs, err = newVoiceSession(d, context.Background(), servers[guild].channel)
-	if err != nil {
-		lit.Error("Can't join, %s", err.Error())
-		// We can't join the channel, just remove it
-		delete(servers, guild)
-	}
+	servers[guild].vs, _ = newVoiceSession(s, context.Background(), servers[guild].channel)
 }

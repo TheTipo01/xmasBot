@@ -22,6 +22,9 @@ func playSound(fileName string) {
 type MiddlemanWriter struct{}
 
 func (m MiddlemanWriter) Write(p []byte) (n int, err error) {
+	serversMutex.Lock()
+	defer serversMutex.Unlock()
+
 	// Try to write what we received to the master writer
 	for g, s := range servers {
 		_, err = s.vs.Write(p)

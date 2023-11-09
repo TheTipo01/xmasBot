@@ -6,8 +6,9 @@ import (
 )
 
 type Server struct {
-	channel discord.ChannelID
-	vs      *voice.Session
+	channel    discord.ChannelID
+	vs         *voice.Session
+	newChannel discord.ChannelID
 }
 
 // YoutubeDL structure for holding youtube-dl data

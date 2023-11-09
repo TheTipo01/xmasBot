@@ -170,10 +170,11 @@ func newVoiceSession(s *state.State, ctx context.Context, channel discord.Channe
 func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
 	u, _ := d.Me()
 
+	serversMutex.Lock()
+	defer serversMutex.Unlock()
+
 	// Check if the user is us, and we got moved / disconnected
 	if v.UserID == u.ID && v.ChannelID.IsValid() && v.ChannelID != servers[v.GuildID].channel {
-		serversMutex.Lock()
-		defer serversMutex.Unlock()
 		servers[v.GuildID].channel = v.ChannelID
 	}
 }

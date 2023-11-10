@@ -169,8 +169,7 @@ func xmasLoop(s *state.State, ctx context.Context) {
 func newVoiceSession(s *state.State, ctx context.Context, channel discord.ChannelID) (*voice.Session, error) {
 	v, err := voice.NewSession(s)
 	if err != nil {
-		lit.Error("cannot make new voice session: %w", err)
-		return nil, nil
+		return nil, err
 	}
 
 	// Optimize Opus frame duration.
@@ -186,21 +185,23 @@ func newVoiceSession(s *state.State, ctx context.Context, channel discord.Channe
 }
 
 func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
-	u, _ := s.Me()
+	if u, _ := s.Me(); v.UserID != u.ID {
+		return
+	}
+
+	flag := !v.ChannelID.IsValid()
 
 	serversMutex.Lock()
 	defer serversMutex.Unlock()
 
-	// Check if the user is us, and we got moved / disconnected
-	if v.UserID == u.ID {
-		if !v.ChannelID.IsValid() {
-			reconnect(v.GuildID)
-		} else {
-			if v.ChannelID != servers[v.GuildID].channel {
-				servers[v.GuildID].channel = v.ChannelID
-				reconnect(v.GuildID)
-			}
-		}
+	// Check if we got moved / disconnected
+	if v.ChannelID != servers[v.GuildID].channel {
+		servers[v.GuildID].channel = v.ChannelID
+		flag = true
+	}
+
+	if flag {
+		reconnect(v.GuildID)
 	}
 }
 

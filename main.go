@@ -180,17 +180,19 @@ func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
 	defer serversMutex.Unlock()
 
 	// Check if the user is us, and we got moved / disconnected
-	if v.UserID == u.ID && v.ChannelID.IsValid() && v.ChannelID != servers[v.GuildID].channel {
-		servers[v.GuildID].newChannel = v.ChannelID
+	if v.UserID == u.ID {
+		if !v.ChannelID.IsValid() {
+			reconnect(v.GuildID)
+		} else {
+			if v.ChannelID != servers[v.GuildID].channel {
+				servers[v.GuildID].channel = v.ChannelID
+				reconnect(v.GuildID)
+			}
+		}
 	}
 }
 
 func reconnect(guild discord.GuildID) {
-	if servers[guild].newChannel.IsValid() {
-		servers[guild].channel = servers[guild].newChannel
-		servers[guild].newChannel = 0
-	}
-
 	// Recreate the voice session
 	servers[guild].vs, _ = newVoiceSession(s, context.Background(), servers[guild].channel)
 }

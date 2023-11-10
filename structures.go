@@ -8,6 +8,7 @@ import (
 type Server struct {
 	channel discord.ChannelID
 	vs      *voice.Session
+	errors  uint8
 }
 
 // YoutubeDL structure for holding youtube-dl data

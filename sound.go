@@ -26,8 +26,17 @@ func (m MiddlemanWriter) Write(p []byte) (n int, err error) {
 	defer serversMutex.Unlock()
 
 	// Try to write what we received to the master writer
-	for _, g := range servers {
-		_, _ = g.vs.Write(p)
+	for g, s := range servers {
+		_, err := s.vs.Write(p)
+		if err != nil {
+			s.errors++
+			if s.errors >= 3 {
+				// Try to reconnect
+				reconnect(g)
+			}
+		} else {
+			s.errors = 0
+		}
 	}
 
 	return len(p), nil

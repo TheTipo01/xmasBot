@@ -114,6 +114,18 @@ func main() {
 		if started.CompareAndSwap(false, true) {
 			go xmasLoop(s, ctx)
 		}
+
+		// Set the status
+		_ = s.Gateway().Send(context.Background(), &gateway.UpdatePresenceCommand{
+			Activities: []discord.Activity{
+				{
+					Name: "christmas music",
+					Type: discord.ListeningActivity,
+				},
+			},
+			Status: discord.OnlineStatus,
+			AFK:    false,
+		})
 	})
 
 	if err := s.Open(ctx); err != nil {

@@ -34,10 +34,8 @@ var (
 	// files holds all the songs
 	files []string
 	// State
-	s *state.State
-	// Ensures data integrity for the servers map
-	serversMutex = &sync.Mutex{}
-	started      atomic.Bool
+	s       *state.State
+	started atomic.Bool
 )
 
 const (
@@ -98,7 +96,6 @@ func main() {
 	// Create a new Discord session using the provided bot token.
 	s = state.New("Bot " + token)
 	voice.AddIntents(s)
-	s.AddHandler(voiceStateUpdate)
 
 	h := newHandler(s)
 	s.AddInteractionHandler(h)
@@ -184,28 +181,9 @@ func newVoiceSession(s *state.State, ctx context.Context, channel discord.Channe
 	return v, err
 }
 
-func voiceStateUpdate(v *gateway.VoiceStateUpdateEvent) {
-	if u, _ := s.Me(); v.UserID != u.ID {
-		return
-	}
-
-	flag := !v.ChannelID.IsValid()
-
-	serversMutex.Lock()
-	defer serversMutex.Unlock()
-
-	// Check if we got moved / disconnected
-	if v.ChannelID != servers[v.GuildID].channel {
-		servers[v.GuildID].channel = v.ChannelID
-		flag = true
-	}
-
-	if flag {
-		reconnect(v.GuildID)
-	}
-}
-
 func reconnect(guild discord.GuildID) {
+	_ = servers[guild].vs.Leave(context.Background())
+
 	// Recreate the voice session
 	servers[guild].vs, _ = newVoiceSession(s, context.Background(), servers[guild].channel)
 }

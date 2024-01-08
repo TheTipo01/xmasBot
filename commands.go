@@ -50,8 +50,15 @@ var (
 						SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 				}
 			} else {
+				var user string
+				if i.User != nil {
+					user = i.User.Username
+				} else {
+					user = i.Member.User.Username
+				}
+				
 				sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
-					AddField("Error", "You're not in the admin list!").
+					AddField("Error", user+" is not in the sudoers file. this incident will be reported").
 					SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 			}
 		},

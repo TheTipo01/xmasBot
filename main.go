@@ -18,7 +18,8 @@ type Config struct {
 		Guild   string `fig:"guild" validate:"required"`
 		Channel string `fig:"channel" validate:"required"`
 	}
-	Admin []string `fig:"admin" validate:"required"`
+	Admin  []string `fig:"admin" validate:"required"`
+	Status string   `fig:"status" validate:"required"`
 }
 
 type Server struct {
@@ -37,6 +38,8 @@ var (
 	admins map[string]bool
 	// files holds all the songs
 	files []string
+	// Bot status
+	status string
 )
 
 const (
@@ -55,6 +58,7 @@ func init() {
 	}
 
 	token = cfg.Token
+	status = cfg.Status
 
 	servers = make(map[string]*Server, len(cfg.Servers))
 	for _, s := range cfg.Servers {
@@ -134,7 +138,7 @@ func main() {
 
 func ready(s *discordgo.Session, _ *discordgo.Ready) {
 	// Set the playing status.
-	err := s.UpdateGameStatus(0, "xmas songs")
+	err := s.UpdateListeningStatus(status)
 	if err != nil {
 		lit.Error("Can't set status, %s", err)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -29,9 +28,14 @@ func download(link string) []*exec.Cmd {
 	ytOut, _ := ytDlp.StdoutPipe()
 
 	// We pass it down to ffmpeg
-	ffmpeg := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-c:a", "libopus",
-		"-b:a", "96k", "-frame_duration", strconv.Itoa(frameDuration), "-vbr", "off", "-f", "opus", "-")
+	ffmpeg := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "panic", "-i", "pipe:", "-f", "s16le",
+		"-ar", "48000", "-ac", "2", "pipe:1", "-af", "loudnorm=I=-16:LRA=11:TP=-1.5")
 	ffmpeg.Stdin = ytOut
+	ffmpegOut, _ := ffmpeg.StdoutPipe()
 
-	return []*exec.Cmd{ytDlp, ffmpeg}
+	// dca converts it to a format useful for playing back on discord
+	dca := exec.Command("dca")
+	dca.Stdin = ffmpegOut
+
+	return []*exec.Cmd{ytDlp, ffmpeg, dca}
 }

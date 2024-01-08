@@ -1,6 +1,9 @@
 # Discord bot token
 token: ""
 
+# Status message
+status: "xmas songs"
+
 # Guild & channel ids to join.
 servers:
   - guild: 111111111111111111

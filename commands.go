@@ -1,95 +1,66 @@
 package main
 
 import (
-	"context"
-	"github.com/diamondburned/arikawa/v3/api"
-	"github.com/diamondburned/arikawa/v3/api/cmdroute"
-	"github.com/diamondburned/arikawa/v3/discord"
-	"github.com/diamondburned/arikawa/v3/state"
+	"github.com/bwmarrin/discordgo"
+	"time"
 )
 
-type handler struct {
-	*cmdroute.Router
-	s *state.State
-}
-
 var (
-	commands = []api.CreateCommandData{
+	commands = []*discordgo.ApplicationCommand{
 		{
 			Name:        "add",
 			Description: "Adds a song to the bots plethora",
-			Options: []discord.CommandOption{
-				&discord.StringOption{
-					OptionName:  "link",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "link",
 					Description: "Link of the song to download and play",
 					Required:    true,
 				},
 			},
 		},
 	}
-)
 
-func newHandler(s *state.State) *handler {
-	h := &handler{s: s}
+	// Handler
+	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"add": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			if (i.User != nil && admins[i.User.ID]) || (i.Member != nil && admins[i.Member.User.ID]) {
+				url := i.ApplicationCommandData().Options[0].StringValue()
+				if isValidURL(url) {
+					c := make(chan int)
+					go sendEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+						AddField("Downloading", "Please wait...").
+						SetColor(0x7289DA).MessageEmbed, i.Interaction, &c)
 
-	h.Router = cmdroute.NewRouter()
-	// Automatically defer handles if they're slow.
-	h.Use(cmdroute.Deferrable(s, cmdroute.DeferOpts{}))
-	h.AddFunc("add", h.cmdAdd)
+					err := downloadSong(url)
 
-	return h
-}
-
-func (h *handler) cmdAdd(ctx context.Context, data cmdroute.CommandData) *api.InteractionResponseData {
-	var options struct {
-		URL string `discord:"link"`
-	}
-	_ = data.Options.Unmarshal(&options)
-
-	if (data.Event.Member != nil && admins[data.Event.Member.User.ID]) || (data.Event.User != nil && admins[data.Event.User.ID]) {
-		if isValidURL(options.URL) {
-			err := downloadSong(options.URL)
-			if err != nil {
-				return &api.InteractionResponseData{
-					Embeds: &[]discord.Embed{
-						{
-							Title:       "Error",
-							Description: "Error downloading song: " + err.Error(),
-							Color:       0x7289DA,
-						},
-					},
+					<-c
+					if err != nil {
+						modifyInteractionAndDelete(s, NewEmbed().SetTitle(s.State.User.Username).
+							AddField("Error", err.Error()).
+							SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
+					} else {
+						modifyInteractionAndDelete(s, NewEmbed().SetTitle(s.State.User.Username).
+							AddField("Success", "Song added successfully!").
+							SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*5)
+					}
+				} else {
+					sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+						AddField("Error", "Not a valid URL!").
+						SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 				}
 			} else {
-				return &api.InteractionResponseData{
-					Embeds: &[]discord.Embed{
-						{
-							Title:       "Success",
-							Description: "Song added successfully!",
-							Color:       0x7289DA,
-						},
-					},
+				var user string
+				if i.User != nil {
+					user = i.User.Username
+				} else {
+					user = i.Member.User.Username
 				}
+				
+				sendAndDeleteEmbedInteraction(s, NewEmbed().SetTitle(s.State.User.Username).
+					AddField("Error", user+" is not in the sudoers file. this incident will be reported").
+					SetColor(0x7289DA).MessageEmbed, i.Interaction, time.Second*10)
 			}
-		} else {
-			return &api.InteractionResponseData{
-				Embeds: &[]discord.Embed{
-					{
-						Title:       "Error",
-						Description: "Not a valid URL!",
-						Color:       0x7289DA,
-					},
-				},
-			}
-		}
-	} else {
-		return &api.InteractionResponseData{
-			Embeds: &[]discord.Embed{
-				{
-					Title:       "Error",
-					Description: "You're not in the admin list!",
-					Color:       0x7289DA,
-				},
-			},
-		}
+		},
 	}
-}
+)

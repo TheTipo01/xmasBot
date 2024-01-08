@@ -1,13 +1,12 @@
 package main
 
 import (
-	"github.com/diamondburned/arikawa/v3/discord"
-	"github.com/diamondburned/arikawa/v3/voice"
+	"github.com/bwmarrin/discordgo"
 )
 
 type Server struct {
-	channel discord.ChannelID
-	vs      *voice.Session
+	channel string
+	vc      *discordgo.VoiceConnection
 }
 
 // YoutubeDL structure for holding youtube-dl data
@@ -23,5 +22,6 @@ type Config struct {
 		Guild   string `fig:"guild" validate:"required"`
 		Channel string `fig:"channel" validate:"required"`
 	}
-	Admin []string `fig:"admin" validate:"required"`
+	Admin  []string `fig:"admin" validate:"required"`
+	Status string   `fig:"status" validate:"required"`
 }

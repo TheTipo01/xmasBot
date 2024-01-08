@@ -12,21 +12,6 @@ import (
 	"syscall"
 )
 
-type Config struct {
-	Token   string `fig:"token" validate:"required"`
-	Servers []struct {
-		Guild   string `fig:"guild" validate:"required"`
-		Channel string `fig:"channel" validate:"required"`
-	}
-	Admin  []string `fig:"admin" validate:"required"`
-	Status string   `fig:"status" validate:"required"`
-}
-
-type Server struct {
-	channel string
-	vc      *discordgo.VoiceConnection
-}
-
 var (
 	// Discord token
 	token string

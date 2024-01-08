@@ -50,11 +50,10 @@ func playSound(fileName string) {
 		wg.Wait()
 		wg.Add(len(servers))
 		for _, i := range servers {
-			i := i
-			go func() {
+			go func(i *Server) {
 				defer wg.Done()
 				i.vc.OpusSend <- InBuf
-			}()
+			}(i)
 		}
 	}
 }

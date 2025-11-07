@@ -107,9 +107,11 @@ func main() {
 		return
 	}
 
-	files = make([]string, len(fileInfo))
-	for i, f := range fileInfo {
-		files[i] = f.Name()
+	files = make([]string, 0, len(fileInfo))
+	for _, f := range fileInfo {
+		if name := f.Name(); strings.HasSuffix(name, ".dca") {
+			files = append(files, name)
+		}
 	}
 
 	go xmasLoop(dg)

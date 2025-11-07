@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/bwmarrin/lit"
-	"github.com/kkyr/fig"
 	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/lit"
+	"github.com/kkyr/fig"
 )
 
 var (
@@ -132,7 +135,7 @@ func ready(s *discordgo.Session, _ *discordgo.Ready) {
 func xmasLoop(s *discordgo.Session) {
 	for guild, server := range servers {
 		var err error
-		server.vc, err = s.ChannelVoiceJoin(guild, server.channel, false, true)
+		server.vc, err = s.ChannelVoiceJoin(context.Background(), guild, server.channel, false, true)
 		if err != nil {
 			lit.Error("Can't join, %s", err.Error())
 
@@ -156,7 +159,9 @@ func voiceStateUpdate(s *discordgo.Session, v *discordgo.VoiceStateUpdate) {
 	if v.UserID == s.State.User.ID && v.ChannelID == "" {
 		// If the bot has been disconnected from the voice channel, reconnect it
 		if _, ok := servers[v.GuildID]; ok && servers[v.GuildID].vc != nil {
-			err := servers[v.GuildID].vc.ChangeChannel(servers[v.GuildID].channel, false, true)
+			var err error
+
+			servers[v.GuildID].vc, err = s.ChannelVoiceJoin(context.Background(), v.GuildID, servers[v.GuildID].channel, false, true)
 			if err != nil {
 				lit.Error("Can't join, %s", err.Error())
 			} else {

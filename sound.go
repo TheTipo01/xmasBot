@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
-	"github.com/bwmarrin/lit"
 	"io"
 	"os"
 	"sync"
+
+	"github.com/bwmarrin/lit"
 )
 
 func playSound(fileName string) {

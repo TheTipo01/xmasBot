@@ -3,15 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/bwmarrin/lit"
+	"github.com/disgoorg/disgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/disgo/gateway"
+	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/kkyr/fig"
 )
 
@@ -21,13 +29,15 @@ var (
 	// Mutex for downloading songs one at a time
 	mutex = &sync.Mutex{}
 	// Server map, for holding infos about a server
-	servers map[string]*Server
+	servers map[snowflake.ID]*Server
 	// Admins holds who are allowed to add songs
-	admins map[string]bool
+	admins map[snowflake.ID]bool
 	// files holds all the songs
 	files []string
 	// Bot status
 	status string
+	// Bon name
+	botName string
 )
 
 const (
@@ -48,14 +58,14 @@ func init() {
 	token = cfg.Token
 	status = cfg.Status
 
-	servers = make(map[string]*Server, len(cfg.Servers))
+	servers = make(map[snowflake.ID]*Server, len(cfg.Servers))
 	for _, s := range cfg.Servers {
-		servers[s.Guild] = &Server{channel: s.Channel}
+		servers[snowflake.MustParse(s.Channel)] = &Server{channel: snowflake.MustParse(s.Channel)}
 	}
 
-	admins = make(map[string]bool, len(cfg.Admin))
+	admins = make(map[snowflake.ID]bool, len(cfg.Admin))
 	for _, a := range cfg.Admin {
-		admins[a] = true
+		admins[snowflake.MustParse(a)] = true
 	}
 
 	// Create folders used by the bot
@@ -63,41 +73,6 @@ func init() {
 		if err = os.Mkdir(cachePath, 0755); err != nil {
 			lit.Error("Cannot create %s, %s", cachePath, err)
 		}
-	}
-}
-
-func main() {
-	// Create a new Discord session using the provided bot token.
-	dg, err := discordgo.New("Bot " + token)
-	if err != nil {
-		fmt.Println("error creating Discord session,", err)
-		return
-	}
-
-	// We just need private messages and voiceStates
-	dg.Identify.Intents = discordgo.IntentsGuildVoiceStates
-
-	dg.AddHandler(ready)
-	dg.AddHandler(voiceStateUpdate)
-
-	// Add commands handler
-	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
-		}
-	})
-
-	// Open a websocket connection to Discord and begin listening.
-	err = dg.Open()
-	if err != nil {
-		lit.Error("error opening connection,", err)
-		return
-	}
-
-	// Register commands
-	_, err = dg.ApplicationCommandBulkOverwrite(dg.State.User.ID, "", commands)
-	if err != nil {
-		lit.Error("Can't register commands, %s", err)
 	}
 
 	// Initial reading
@@ -113,8 +88,31 @@ func main() {
 			files = append(files, name)
 		}
 	}
+}
 
-	go xmasLoop(dg)
+func main() {
+	client, _ := disgo.New(token,
+		bot.WithGatewayConfigOpts(gateway.WithIntents(gateway.IntentGuildVoiceStates)),
+
+		bot.WithEventListenerFunc(ready),
+		bot.WithEventListenerFunc(interactionCreate),
+
+		bot.WithLogger(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))),
+	)
+
+	if err := client.OpenGateway(context.TODO()); err != nil {
+		lit.Error("errors while connecting to gateway %s", err)
+		return
+	}
+
+	// Register commands
+	_, err := client.Rest.SetGlobalCommands(client.ApplicationID, commands)
+	if err != nil {
+		lit.Error("Error registering commands: %s", err)
+		return
+	}
+
+	go xmasLoop(client)
 
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("xmasBot is now running.  Press CTRL-C to exit.")
@@ -122,29 +120,34 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
-	// Cleanly close down the Discord session.
-	_ = dg.Close()
+	client.Close(context.TODO())
 }
 
-func ready(s *discordgo.Session, _ *discordgo.Ready) {
-	// Set the playing status.
-	err := s.UpdateListeningStatus(status)
+func ready(e *events.Ready) {
+	client := e.Client()
+	err := client.SetPresence(context.TODO(), gateway.WithListeningActivity(status))
 	if err != nil {
-		lit.Error("Can't set status, %s", err)
+		lit.Error("Error setting status: %s", err)
 	}
+
+	botName = e.User.Username
 }
 
-func xmasLoop(s *discordgo.Session) {
+func xmasLoop(client *bot.Client) {
 	for guild, server := range servers {
-		var err error
-		server.vc, err = s.ChannelVoiceJoin(context.Background(), guild, server.channel, false, true)
-		if err != nil {
+		server.vc = client.VoiceManager.CreateConn(guild)
+
+		ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+		if err := server.vc.Open(ctx, server.channel, false, false); err != nil {
 			lit.Error("Can't join, %s", err.Error())
 
 			// We can't join the channel, just remove it
 			delete(servers, guild)
-		} else {
-			_ = server.vc.Speaking(true)
+			continue
+		}
+
+		if err := server.vc.SetSpeaking(ctx, voice.SpeakingFlagMicrophone); err != nil {
+			lit.Error("error setting speaking flag: %s", err.Error())
 		}
 	}
 
@@ -155,20 +158,16 @@ func xmasLoop(s *discordgo.Session) {
 	}
 }
 
-// Update the voice channel when the bot is moved
-func voiceStateUpdate(s *discordgo.Session, v *discordgo.VoiceStateUpdate) {
-	// If the bot is moved to another channel
-	if v.UserID == s.State.User.ID && v.ChannelID == "" {
-		// If the bot has been disconnected from the voice channel, reconnect it
-		if _, ok := servers[v.GuildID]; ok && servers[v.GuildID].vc != nil {
-			var err error
-
-			servers[v.GuildID].vc, err = s.ChannelVoiceJoin(context.Background(), v.GuildID, servers[v.GuildID].channel, false, true)
-			if err != nil {
-				lit.Error("Can't join, %s", err.Error())
-			} else {
-				_ = servers[v.GuildID].vc.Speaking(true)
-			}
+func interactionCreate(e *events.ApplicationCommandInteractionCreate) {
+	data := e.SlashCommandInteractionData()
+	// Ignores commands from DM
+	if e.Context() == discord.InteractionContextTypeGuild {
+		if h, ok := commandHandlers[data.CommandName()]; ok {
+			h(e)
 		}
+	} else {
+		SendAndDeleteEmbedInteraction(discord.NewEmbedBuilder().SetTitle(botName).AddField("Error",
+			"Don't use the bot in private!", false).
+			SetColor(0x7289DA).Build(), e, time.Second*15, nil)
 	}
 }

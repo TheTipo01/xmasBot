@@ -1,19 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"encoding/binary"
-	"errors"
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/lit"
 )
 
 func playSound(fileName string) {
-	var opuslen int16
-
 	file, err := os.Open(cachePath + fileName)
 	if err != nil {
 		lit.Error("Error opening dca file: %s", err)
@@ -21,40 +18,38 @@ func playSound(fileName string) {
 	}
 	defer file.Close()
 
-	buffer := bufio.NewReader(file)
 	wg := sync.WaitGroup{}
 
-	for {
-		// Read opus frame length from dca file.
-		err = binary.Read(buffer, binary.LittleEndian, &opuslen)
+	ticker := time.NewTicker(time.Millisecond * 20)
+	defer ticker.Stop()
 
-		// If this is the end of the file, return.
-		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
-			break
-		}
-
+	var frameLen int16
+	// Don't wait for the first tick, run immediately.
+	for ; true; <-ticker.C {
+		err = binary.Read(file, binary.LittleEndian, &frameLen)
 		if err != nil {
-			lit.Error("Error reading from dca file: %s", err)
-			break
-		}
-
-		// Read encoded pcm from dca file.
-		InBuf := make([]byte, opuslen)
-		err = binary.Read(buffer, binary.LittleEndian, &InBuf)
-
-		// Should not be any end of file errors
-		if err != nil {
-			lit.Error("Error reading from dca file: %s", err)
-			break
+			if err == io.EOF {
+				_ = file.Close()
+				return
+			}
+			panic("error reading file: " + err.Error())
+			return
 		}
 
 		wg.Wait()
-		wg.Add(len(servers))
 		for _, i := range servers {
+			wg.Add(1)
 			go func(i *Server) {
 				defer wg.Done()
-				i.vc.OpusSend <- InBuf
+
+				// Copy the frame.
+				_, err = io.CopyN(i.vc.UDP(), file, int64(frameLen))
+				if err != nil && err != io.EOF {
+					_ = file.Close()
+					return
+				}
 			}(i)
 		}
+
 	}
 }

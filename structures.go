@@ -1,13 +1,12 @@
 package main
 
 import (
-	"github.com/disgoorg/disgo/voice"
-	"github.com/disgoorg/snowflake/v2"
+	"github.com/bwmarrin/discordgo"
 )
 
 type Server struct {
-	channel snowflake.ID
-	vc      voice.Conn
+	channel string
+	vc      *discordgo.VoiceConnection
 }
 
 // YoutubeDL structure for holding youtube-dl data

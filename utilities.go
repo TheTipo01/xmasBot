@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
+
 	"github.com/bwmarrin/lit"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+
 	"net/url"
 	"os"
 	"os/exec"
@@ -75,48 +78,56 @@ func isValidURL(toTest string) bool {
 	return err == nil
 }
 
-func sendEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, c *chan int) {
-	sliceEmbed := []*discordgo.MessageEmbed{embed}
-	err := s.InteractionRespond(i, &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Embeds: sliceEmbed}})
+// SendEmbedInteraction sends an embed as response to an interaction
+func SendEmbedInteraction(embed discord.Embed, e *events.ApplicationCommandInteractionCreate, c chan<- struct{}, isDeferred chan struct{}) {
+	var err error
+
+	if isDeferred != nil {
+		<-isDeferred
+		_, err = e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdateBuilder().SetEmbeds(embed).Build())
+	} else {
+		err = e.CreateMessage(discord.NewMessageCreateBuilder().SetEmbeds(embed).Build())
+	}
+
 	if err != nil {
 		lit.Error("InteractionRespond failed: %s", err)
 		return
 	}
 
 	if c != nil {
-		*c <- 1
+		c <- struct{}{}
 	}
 }
 
-func sendAndDeleteEmbedInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, wait time.Duration) {
-	sendEmbedInteraction(s, embed, i, nil)
+// SendAndDeleteEmbedInteraction sends and deletes after three second an embed in a given channel
+func SendAndDeleteEmbedInteraction(embed discord.Embed, e *events.ApplicationCommandInteractionCreate, wait time.Duration, isDeferred chan struct{}) {
+	SendEmbedInteraction(embed, e, nil, isDeferred)
 
 	time.Sleep(wait)
 
-	err := s.InteractionResponseDelete(i)
+	err := e.Client().Rest.DeleteInteractionResponse(e.ApplicationID(), e.Token())
 	if err != nil {
 		lit.Error("InteractionResponseDelete failed: %s", err)
 		return
 	}
 }
 
-// Modify an already sent interaction
-func modifyInteraction(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction) {
-	sliceEmbed := []*discordgo.MessageEmbed{embed}
-	_, err := s.InteractionResponseEdit(i, &discordgo.WebhookEdit{Embeds: &sliceEmbed})
+// ModifyInteraction modifies an already sent interaction
+func ModifyInteraction(e *events.ApplicationCommandInteractionCreate, embed discord.Embed) {
+	_, err := e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdateBuilder().SetEmbeds(embed).Build())
 	if err != nil {
 		lit.Error("InteractionResponseEdit failed: %s", err)
 		return
 	}
 }
 
-// Modify an already sent interaction and deletes it after the specified wait time
-func modifyInteractionAndDelete(s *discordgo.Session, embed *discordgo.MessageEmbed, i *discordgo.Interaction, wait time.Duration) {
-	modifyInteraction(s, embed, i)
+// ModifyInteractionAndDelete modifies an already sent interaction and deletes it after the specified wait time
+func ModifyInteractionAndDelete(embed discord.Embed, e *events.ApplicationCommandInteractionCreate, wait time.Duration) {
+	ModifyInteraction(e, embed)
 
 	time.Sleep(wait)
 
-	err := s.InteractionResponseDelete(i)
+	err := e.Client().Rest.DeleteInteractionResponse(e.ApplicationID(), e.Token())
 	if err != nil {
 		lit.Error("InteractionResponseDelete failed: %s", err)
 		return

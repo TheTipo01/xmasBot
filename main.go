@@ -15,10 +15,12 @@ import (
 	"github.com/bwmarrin/lit"
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/cache"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/godave/golibdave"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/kkyr/fig"
 )
@@ -91,22 +93,45 @@ func init() {
 }
 
 func main() {
-	client, _ := disgo.New(token,
-		bot.WithGatewayConfigOpts(gateway.WithIntents(gateway.IntentGuildVoiceStates)),
+	logger := slog.Default()
+	if lit.LogLevel == lit.LogDebug {
+		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+
+	client, err := disgo.New(token,
+		bot.WithGatewayConfigOpts(
+			gateway.WithIntents(
+				gateway.IntentGuildVoiceStates,
+				gateway.IntentGuilds,
+			),
+		),
+
+		bot.WithCacheConfigOpts(
+			cache.WithCaches(
+				cache.FlagVoiceStates,
+			),
+		),
 
 		bot.WithEventListenerFunc(ready),
 		bot.WithEventListenerFunc(interactionCreate),
 
-		bot.WithLogger(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))),
+		bot.WithVoiceManagerConfigOpts(voice.WithDaveSessionCreateFunc(golibdave.NewSession)),
+
+		bot.WithLogger(logger),
 	)
 
-	if err := client.OpenGateway(context.TODO()); err != nil {
+	if err != nil {
+		lit.Error("Error creating bot client: %s", err)
+		return
+	}
+
+	if err = client.OpenGateway(context.TODO()); err != nil {
 		lit.Error("errors while connecting to gateway %s", err)
 		return
 	}
 
 	// Register commands
-	_, err := client.Rest.SetGlobalCommands(client.ApplicationID, commands)
+	_, err = client.Rest.SetGlobalCommands(client.ApplicationID, commands)
 	if err != nil {
 		lit.Error("Error registering commands: %s", err)
 		return
@@ -166,8 +191,8 @@ func interactionCreate(e *events.ApplicationCommandInteractionCreate) {
 			h(e)
 		}
 	} else {
-		SendAndDeleteEmbedInteraction(discord.NewEmbedBuilder().SetTitle(botName).AddField("Error",
+		SendAndDeleteEmbedInteraction(discord.NewEmbed().WithTitle(botName).AddField("Error",
 			"Don't use the bot in private!", false).
-			SetColor(0x7289DA).Build(), e, time.Second*15, nil)
+			WithColor(0x7289DA), e, time.Second*15, nil)
 	}
 }

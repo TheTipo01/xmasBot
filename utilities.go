@@ -84,9 +84,9 @@ func SendEmbedInteraction(embed discord.Embed, e *events.ApplicationCommandInter
 
 	if isDeferred != nil {
 		<-isDeferred
-		_, err = e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdateBuilder().SetEmbeds(embed).Build())
+		_, err = e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdate().AddEmbeds(embed))
 	} else {
-		err = e.CreateMessage(discord.NewMessageCreateBuilder().SetEmbeds(embed).Build())
+		err = e.CreateMessage(discord.NewMessageCreate().AddEmbeds(embed))
 	}
 
 	if err != nil {
@@ -114,7 +114,7 @@ func SendAndDeleteEmbedInteraction(embed discord.Embed, e *events.ApplicationCom
 
 // ModifyInteraction modifies an already sent interaction
 func ModifyInteraction(e *events.ApplicationCommandInteractionCreate, embed discord.Embed) {
-	_, err := e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdateBuilder().SetEmbeds(embed).Build())
+	_, err := e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.NewMessageUpdate().AddEmbeds(embed))
 	if err != nil {
 		lit.Error("InteractionResponseEdit failed: %s", err)
 		return

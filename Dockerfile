@@ -1,18 +1,45 @@
-FROM --platform=$BUILDPLATFORM golang:alpine AS build
+FROM golang:alpine AS build
 
-RUN apk add --no-cache git
+RUN --mount=type=cache,target=/var/cache/apk \
+    ln -s /var/cache/apk /etc/apk/cache && \
+    apk add --no-cache build-base pkgconfig ccache
 
-RUN git clone https://github.com/TheTipo01/xmasBot /xmasBot
+COPY go.mod /xmasBot/go.mod
+COPY go.sum /xmasBot/go.sum
+
 WORKDIR /xmasBot
-ARG TARGETOS
-ARG TARGETARCH
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 go mod download
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o xmasBot
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . /xmasBot
+
+COPY --from=ghcr.io/thetipo01/godave-musl:latest /root/.local /root/.local
+ENV PKG_CONFIG_PATH="/root/.local/lib/pkgconfig"
+
+ENV CC=/usr/local/bin/gcc CXX=/usr/local/bin/g++
+RUN ln -s /usr/bin/ccache /usr/local/bin/gcc && ln -s /usr/bin/ccache /usr/local/bin/g++ && ln -s /usr/bin/ccache /usr/local/bin/cc && ln -s /usr/bin/ccache /usr/local/bin/c++
+ENV CCACHE_DIR=/ccache
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/ccache \
+    go build -trimpath -ldflags '-s -w' -o xmasBot
 
 FROM alpine
 
-RUN apk add --no-cache ffmpeg yt-dlp
+RUN --mount=type=cache,target=/var/cache/apk \
+    --mount=type=cache,target=/root/.cache/pip \
+    ln -s /var/cache/apk /etc/apk/cache && \
+    apk add ffmpeg python3 ca-certificates py3-pip && \
+    pip3 install --break-system-packages "yt-dlp[default,curl-cffi]" yt-dlp-ejs && \
+    apk del py3-pip
+
+COPY --from=ghcr.io/thetipo01/dca:latest /usr/bin/dca /usr/bin/
+COPY --from=denoland/deno:bin /deno /usr/bin/
 
 COPY --from=build /xmasBot/xmasBot /usr/bin/
+COPY --from=build /root/.local/lib /root/.local/lib
+ENV PKG_CONFIG_PATH="/root/.local/lib/pkgconfig"
 
 CMD ["xmasBot"]

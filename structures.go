@@ -6,6 +6,7 @@ import (
 )
 
 type Server struct {
+	guild   snowflake.ID
 	channel snowflake.ID
 	vc      voice.Conn
 }

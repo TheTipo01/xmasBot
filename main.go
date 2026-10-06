@@ -74,7 +74,8 @@ func init() {
 
 	servers = make(map[snowflake.ID]*Server, len(cfg.Servers))
 	for _, s := range cfg.Servers {
-		servers[snowflake.MustParse(s.Channel)] = &Server{channel: snowflake.MustParse(s.Channel)}
+		guild := snowflake.MustParse(s.Guild)
+		servers[guild] = &Server{guild: guild, channel: snowflake.MustParse(s.Channel)}
 	}
 
 	admins = make(map[snowflake.ID]bool, len(cfg.Admin))
@@ -172,19 +173,11 @@ func ready(e *events.Ready) {
 
 func xmasLoop(client *bot.Client) {
 	for guild, server := range servers {
-		server.vc = client.VoiceManager.CreateConn(guild)
-
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
-		if err := server.vc.Open(ctx, server.channel, false, false); err != nil {
+		if err := joinVoice(client, server); err != nil {
 			lit.Error("Can't join, %s", err.Error())
 
 			// We can't join the channel, just remove it
 			delete(servers, guild)
-			continue
-		}
-
-		if err := server.vc.SetSpeaking(ctx, voice.SpeakingFlagMicrophone); err != nil {
-			lit.Error("error setting speaking flag: %s", err.Error())
 		}
 	}
 
@@ -193,6 +186,35 @@ func xmasLoop(client *bot.Client) {
 			playSound(files[v])
 		}
 	}
+}
+
+// joinVoice creates a voice connection for the given guild and opens it in the
+// server's configured channel, waiting until the connection is ready.
+func joinVoice(client *bot.Client, server *Server) error {
+	server.vc = client.VoiceManager.CreateConn(server.guild)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.vc.Open(ctx, server.channel, false, false)
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if err := server.vc.SetSpeaking(ctx, voice.SpeakingFlagMicrophone); err != nil {
+		lit.Error("error setting speaking flag: %s", err.Error())
+	}
+
+	return nil
 }
 
 func interactionCreate(e *events.ApplicationCommandInteractionCreate) {

@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/bwmarrin/lit v0.0.0-20190813132558-fd4b44871312
-	github.com/disgoorg/disgo v0.19.6
-	github.com/disgoorg/godave/golibdave v0.3.0
-	github.com/disgoorg/snowflake/v2 v2.0.3
+	github.com/disgoorg/disgo v0.19.7-0.20261001194251-68b7dbe697f2
+	github.com/disgoorg/godave/golibdave v0.3.1-0.20261002185641-c38276519ffa
+	github.com/disgoorg/snowflake/v2 v2.0.4-0.20250223124221-0e6fdabd91cc
 	github.com/kkyr/fig v0.5.0
 )
 

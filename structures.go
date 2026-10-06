@@ -23,6 +23,7 @@ type Config struct {
 		Guild   string `fig:"guild" validate:"required"`
 		Channel string `fig:"channel" validate:"required"`
 	}
-	Admin  []string `fig:"admin" validate:"required"`
-	Status string   `fig:"status" validate:"required"`
+	Admin    []string `fig:"admin" validate:"required"`
+	Status   string   `fig:"status" validate:"required"`
+	LogLevel string   `fig:"loglevel" validate: "required"`
 }
